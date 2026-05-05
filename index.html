@@ -4,14 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>EduTrack</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js">
 <!-- Firebase SDK -->
 <script type="module">
+  // Import the functions you need from the SDKs you need
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
   import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-analytics.js";
-  import { getFirestore, collection, addDoc, getDocs, setDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
-  
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
   // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
   const firebaseConfig = {
     apiKey: "AIzaSyAGB21_6olWzuX9ePKolWYOyKURacRyahw",
     authDomain: "pbd2026-31fbd.firebaseapp.com",
@@ -25,17 +27,10 @@
   // Initialize Firebase
   const app = initializeApp(firebaseConfig);
   const analytics = getAnalytics(app);
-  const db = getFirestore(app);
   
-  // Expose to global scope
-  window.db = db;
-  window.firebaseCollection = collection;
-  window.firebaseAddDoc = addDoc;
-  window.firebaseGetDocs = getDocs;
-  window.firebaseSetDoc = setDoc;
-  window.firebaseDoc = doc;
-  window.firebaseGetDoc = getDoc;
+  console.log("Firebase berjaya dimuatkan!");
 </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js">
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2716,12 +2711,6 @@ function salinSenaraiPelajar() {
         function checkLogin() {
             let saved = localStorage.getItem('edutrack_user');
             if(saved) {
-// Load from Firebase after login (for teachers)
-if(currentUser && currentUser.role === 'guru') {
-    setTimeout(() => {
-        loadFromFirebase();
-    }, 500);
-}
                 currentUser = JSON.parse(saved);
                 if(currentUser.role === 'guru') {
                     document.getElementById('loginOverlay').style.display = 'none';
@@ -2862,114 +2851,6 @@ if(currentUser && currentUser.role === 'guru') {
             };
             reader.readAsText(file);
         }
-// ==================== FIREBASE SYNC FUNCTIONS ====================
-async function syncAllToFirebase() {
-    if(!window.db) {
-        console.error("Firebase not initialized");
-        alert("Firebase tidak sedia. Sila muat semula halaman.");
-        return;
-    }
-    
-    try {
-        showSyncStatus("🔄 Menyegerak data ke Firebase...");
-        
-        // Simpan semua data ke Firestore
-        const backupData = {
-            allData: allData,
-            allSubjects: allSubjects,
-            allClasses: allClasses,
-            masterWeeks: masterWeeks,
-            bookMonths: bookMonths,
-            pbdData: pbdData,
-            dskpDatabase: dskpDatabase,
-            itemConfigGlobal: itemConfigGlobal,
-            lastUpdated: new Date().toISOString()
-        };
-        
-        await window.firebaseSetDoc(window.firebaseDoc(db, "edutrack", "masterData"), backupData);
-        
-        showSyncStatus("✅ Data berjaya disegerak ke Firebase!");
-        setTimeout(() => document.getElementById("syncStatus")?.remove(), 3000);
-    } catch(error) {
-        console.error("Sync error:", error);
-        showSyncStatus("❌ Gagal menyegerak: " + error.message);
-        setTimeout(() => document.getElementById("syncStatus")?.remove(), 3000);
-    }
-}
-
-async function loadFromFirebase() {
-    if(!window.db) {
-        console.error("Firebase not initialized");
-        alert("Firebase tidak sedia. Sila muat semula halaman.");
-        return false;
-    }
-    
-    try {
-        showSyncStatus("🔄 Memuat data dari Firebase...");
-        
-        const docRef = window.firebaseDoc(db, "edutrack", "masterData");
-        const docSnap = await window.firebaseGetDoc(docRef);
-        
-        if(docSnap.exists()) {
-            const data = docSnap.data();
-            
-            allData = data.allData || allData;
-            allSubjects = data.allSubjects || allSubjects;
-            allClasses = data.allClasses || allClasses;
-            masterWeeks = data.masterWeeks || masterWeeks;
-            bookMonths = data.bookMonths || bookMonths;
-            pbdData = data.pbdData || pbdData;
-            dskpDatabase = data.dskpDatabase || dskpDatabase;
-            itemConfigGlobal = data.itemConfigGlobal || itemConfigGlobal;
-            
-            saveAll();
-            refreshSelectors();
-            renderCurrentPage();
-            refreshSettingsSelects();
-            
-            showSyncStatus("✅ Data berjaya dimuat dari Firebase!");
-            setTimeout(() => document.getElementById("syncStatus")?.remove(), 3000);
-            return true;
-        } else {
-            showSyncStatus("ℹ️ Tiada data di Firebase. Data tempatan akan digunakan.");
-            setTimeout(() => document.getElementById("syncStatus")?.remove(), 3000);
-            return false;
-        }
-    } catch(error) {
-        console.error("Load error:", error);
-        showSyncStatus("❌ Gagal memuat dari Firebase: " + error.message);
-        setTimeout(() => document.getElementById("syncStatus")?.remove(), 3000);
-        return false;
-    }
-}
-
-function showSyncStatus(message) {
-    let statusDiv = document.getElementById("syncStatus");
-    if(!statusDiv) {
-        statusDiv = document.createElement("div");
-        statusDiv.id = "syncStatus";
-        statusDiv.style.cssText = "position:fixed;bottom:20px;right:20px;background:#1e293b;color:white;padding:12px 20px;border-radius:12px;z-index:10000;font-size:0.85rem;box-shadow:0 4px 12px rgba(0,0,0,0.15);";
-        document.body.appendChild(statusDiv);
-    }
-    statusDiv.innerHTML = message;
-}
-
-async function autoSyncToFirebase() {
-    if(window.db && currentUser && currentUser.role === 'guru') {
-        await syncAllToFirebase();
-    }
-}
-
-// Override saveAll to auto-sync to Firebase
-const originalSaveAll = saveAll;
-saveAll = function() {
-    originalSaveAll();
-    // Auto sync to Firebase after saving (with delay to avoid too many requests)
-    if(window.autoSyncTimeout) clearTimeout(window.autoSyncTimeout);
-    window.autoSyncTimeout = setTimeout(() => {
-        autoSyncToFirebase();
-    }, 2000);
-};
     </script>
 </body>
 </html>
