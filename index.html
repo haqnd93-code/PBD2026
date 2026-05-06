@@ -2849,5 +2849,125 @@ function salinSenaraiPelajar() {
   const app = initializeApp(firebaseConfig);
   const analytics = getAnalytics(app);
 </script>
+<!-- Firebase Realtime Database -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
+  import { getDatabase, ref, set, onValue, get, child } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-database.js";
+  
+  // Konfigurasi Firebase
+  const firebaseConfig = {
+    apiKey: "AIzaSyAGB21_6olWzuX9ePKolWYOyKURacRyahw",
+    authDomain: "pbd2026-31fbd.firebaseapp.com",
+    projectId: "pbd2026-31fbd",
+    storageBucket: "pbd2026-31fbd.firebasestorage.app",
+    messagingSenderId: "866436918694",
+    appId: "1:866436918694:web:4bb179d90d067569857367",
+    measurementId: "G-ZFR481WSS5"
+  };
+
+  // Init Firebase
+  const app = initializeApp(firebaseConfig);
+  const database = getDatabase(app);
+  
+  // Simpan data ke Firebase
+  async function syncToFirebase() {
+    const dataToSync = {
+      allData: window.allData,
+      allSubjects: window.allSubjects,
+      allClasses: window.allClasses,
+      masterWeeks: window.masterWeeks,
+      bookMonths: window.bookMonths,
+      pbdData: window.pbdData,
+      dskpDatabase: window.dskpDatabase,
+      itemConfigGlobal: window.itemConfigGlobal,
+      timestamp: new Date().toISOString()
+    };
+    
+    try {
+      await set(ref(database, 'edutrack_data'), dataToSync);
+      console.log('✅ Sync ke Firebase berjaya');
+    } catch (error) {
+      console.error('❌ Sync gagal:', error);
+    }
+  }
+  
+  // Baca data dari Firebase
+  async function loadFromFirebase() {
+    try {
+      const snapshot = await get(child(ref(database), 'edutrack_data'));
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        window.allData = data.allData || {};
+        window.allSubjects = data.allSubjects || window.allSubjects;
+        window.allClasses = data.allClasses || window.allClasses;
+        window.masterWeeks = data.masterWeeks || window.masterWeeks;
+        window.bookMonths = data.bookMonths || {};
+        window.pbdData = data.pbdData || {};
+        window.dskpDatabase = data.dskpDatabase || {};
+        window.itemConfigGlobal = data.itemConfigGlobal || {};
+        
+        // Update localStorage
+        if (window.saveAll) window.saveAll();
+        if (window.renderCurrentPage) window.renderCurrentPage();
+        
+        console.log('✅ Load dari Firebase berjaya');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('❌ Load gagal:', error);
+      return false;
+    }
+  }
+  
+  // Dengar perubahan realtime
+  function listenRealtime() {
+    const dataRef = ref(database, 'edutrack_data');
+    onValue(dataRef, (snapshot) => {
+      if (snapshot.exists() && !window._isLocalUpdate) {
+        const data = snapshot.val();
+        window.allData = data.allData || window.allData;
+        window.allSubjects = data.allSubjects || window.allSubjects;
+        window.allClasses = data.allClasses || window.allClasses;
+        window.masterWeeks = data.masterWeeks || window.masterWeeks;
+        window.bookMonths = data.bookMonths || window.bookMonths;
+        window.pbdData = data.pbdData || window.pbdData;
+        window.dskpDatabase = data.dskpDatabase || window.dskpDatabase;
+        window.itemConfigGlobal = data.itemConfigGlobal || window.itemConfigGlobal;
+        
+        if (window.saveAll) window.saveAll();
+        if (window.renderCurrentPage) window.renderCurrentPage();
+        
+        console.log('🔄 Update realtime diterima');
+      }
+    });
+  }
+  
+  // Override saveAll untuk auto sync
+  if (window.saveAll) {
+    const originalSaveAll = window.saveAll;
+    window.saveAll = function() {
+      originalSaveAll();
+      window._isLocalUpdate = true;
+      syncToFirebase().finally(() => {
+        setTimeout(() => { window._isLocalUpdate = false; }, 500);
+      });
+    };
+  }
+  
+  // Mulakan Firebase sync
+  async function initFirebase() {
+    await loadFromFirebase();
+    listenRealtime();
+    console.log('🔥 Firebase Realtime aktif');
+  }
+  
+  // Fungsi manual sync (boleh panggil dari console)
+  window.manualSync = syncToFirebase;
+  window.manualLoad = loadFromFirebase;
+  
+  // Mulakan
+  initFirebase();
+</script>
 </body>
 </html>
