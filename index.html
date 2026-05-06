@@ -2827,11 +2827,11 @@ function salinSenaraiPelajar() {
         }
     </script>
 <!-- Firebase Realtime Database - VERSION LENGKAP -->
+<!-- Firebase Realtime Database - VERSION FIXED -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
   import { getDatabase, ref, set, onValue, get, child } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-database.js";
   
-  // Konfigurasi Firebase
   const firebaseConfig = {
     apiKey: "AIzaSyAGB21_6olWzuX9ePKolWYOyKURacRyahw",
     authDomain: "pbd2026-31fbd.firebaseapp.com",
@@ -2842,18 +2842,36 @@ function salinSenaraiPelajar() {
     measurementId: "G-ZFR481WSS5"
   };
 
-  // Init Firebase
   const app = initializeApp(firebaseConfig);
   const database = getDatabase(app);
   
   let isSyncing = false;
+  let lastSyncHash = "";
   
-  // ==================== SYNC KE FIREBASE ====================
-  async function syncToFirebase() {
-    if (isSyncing) return;
+  // Function to create hash of current data
+  function getDataHash() {
+    const dataStr = JSON.stringify({
+      allData: window.allData,
+      allSubjects: window.allSubjects,
+      allClasses: window.allClasses,
+      pbdData: window.pbdData
+    });
+    let hash = 0;
+    for (let i = 0; i < dataStr.length; i++) {
+      const char = dataStr.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return hash.toString();
+  }
+  
+  // FORCE refresh seluruh halaman pada peranti lain
+  async function syncToFirebase(force = false) {
+    if (isSyncing && !force) return;
     isSyncing = true;
     
     try {
+      const currentHash = getDataHash();
       const dataToSync = {
         allData: JSON.parse(JSON.stringify(window.allData || {})),
         allSubjects: [...(window.allSubjects || [])],
@@ -2863,6 +2881,7 @@ function salinSenaraiPelajar() {
         pbdData: JSON.parse(JSON.stringify(window.pbdData || {})),
         dskpDatabase: JSON.parse(JSON.stringify(window.dskpDatabase || {})),
         itemConfigGlobal: JSON.parse(JSON.stringify(window.itemConfigGlobal || {})),
+        dataHash: currentHash,
         timestamp: Date.now(),
         deviceId: localStorage.getItem('deviceId') || (() => {
           const id = 'device_' + Math.random().toString(36).substr(2, 9);
@@ -2874,10 +2893,11 @@ function salinSenaraiPelajar() {
       await set(ref(database, 'edutrack_data/master'), dataToSync);
       await set(ref(database, 'edutrack_data/lastUpdate'), {
         timestamp: Date.now(),
-        deviceId: dataToSync.deviceId
+        deviceId: dataToSync.deviceId,
+        dataHash: currentHash
       });
       
-      console.log('✅ Sync ke Firebase berjaya', new Date().toLocaleTimeString());
+      console.log('✅ Sync ke Firebase berjaya', new Date().toLocaleTimeString(), 'Hash:', currentHash);
     } catch (error) {
       console.error('❌ Sync gagal:', error);
     } finally {
@@ -2885,7 +2905,7 @@ function salinSenaraiPelajar() {
     }
   }
   
-  // ==================== LOAD DARI FIREBASE ====================
+  // Load dari Firebase dan refresh UI
   async function loadFromFirebase(force = false) {
     if (isSyncing && !force) return false;
     isSyncing = true;
@@ -2901,34 +2921,50 @@ function salinSenaraiPelajar() {
           return false;
         }
         
-        let changed = false;
+        const currentHash = getDataHash();
         
-        if (JSON.stringify(window.allData) !== JSON.stringify(data.allData)) {
+        // Jika hash berbeza, update data
+        if (data.dataHash !== currentHash || force) {
+          console.log('🔄 Hash berbeza! Update data...');
+          console.log('   Hash baru:', data.dataHash);
+          console.log('   Hash lama:', currentHash);
+          
+          // Update semua data global
           window.allData = data.allData || {};
-          changed = true;
-        }
-        if (JSON.stringify(window.allSubjects) !== JSON.stringify(data.allSubjects)) {
           window.allSubjects = data.allSubjects || window.allSubjects;
-          changed = true;
-        }
-        if (JSON.stringify(window.allClasses) !== JSON.stringify(data.allClasses)) {
           window.allClasses = data.allClasses || window.allClasses;
-          changed = true;
-        }
-        
-        window.masterWeeks = data.masterWeeks || window.masterWeeks;
-        window.bookMonths = data.bookMonths || window.bookMonths;
-        window.pbdData = data.pbdData || window.pbdData;
-        window.dskpDatabase = data.dskpDatabase || window.dskpDatabase;
-        window.itemConfigGlobal = data.itemConfigGlobal || window.itemConfigGlobal;
-        
-        if (changed) {
+          window.masterWeeks = data.masterWeeks || window.masterWeeks;
+          window.bookMonths = data.bookMonths || {};
+          window.pbdData = data.pbdData || {};
+          window.dskpDatabase = data.dskpDatabase || {};
+          window.itemConfigGlobal = data.itemConfigGlobal || {};
+          
+          // Simpan ke localStorage
           if (window.saveAll) window.saveAll();
-          if (window.renderCurrentPage) window.renderCurrentPage();
+          
+          // FORCE REFRESH - reload selectors dan current page
           if (window.refreshSelectors) window.refreshSelectors();
           
-          console.log('✅ Load dari Firebase berjaya - UI dikemas kini', new Date().toLocaleTimeString());
+          // Force render semula halaman aktif
+          if (window.renderCurrentPage) {
+            window.renderCurrentPage();
+          }
+          
+          // Tambahan: refresh dropdown selectors value
+          const subjectSelect = document.getElementById("selectSubject");
+          const classSelect = document.getElementById("selectClass");
+          if (subjectSelect && subjectSelect.value && window.allSubjects.includes(subjectSelect.value)) {
+            // keep value
+          }
+          
+          console.log('✅ Load dari Firebase berjaya - UI dikemas kini');
+          
+          // Tunjukkan notifikasi kepada pengguna
+          showNotification('📡 Data dikemas kini dari Cloud!');
+          
           return true;
+        } else {
+          console.log('⏭️ Hash sama, tiada perubahan diperlukan');
         }
       }
       return false;
@@ -2940,7 +2976,40 @@ function salinSenaraiPelajar() {
     }
   }
   
-  // ==================== REALTIME LISTENER ====================
+  // Function untuk show notification
+  function showNotification(message) {
+    // Cari atau create notification element
+    let notif = document.getElementById('realtimeNotification');
+    if (!notif) {
+      notif = document.createElement('div');
+      notif.id = 'realtimeNotification';
+      notif.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #10b981;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        z-index: 9999;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        pointer-events: none;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      `;
+      document.body.appendChild(notif);
+    }
+    
+    notif.textContent = message;
+    notif.style.opacity = '1';
+    setTimeout(() => {
+      notif.style.opacity = '0';
+    }, 3000);
+  }
+  
+  // Realtime listener dengan force refresh
   function listenRealtime() {
     const lastUpdateRef = ref(database, 'edutrack_data/lastUpdate');
     
@@ -2949,21 +3018,29 @@ function salinSenaraiPelajar() {
         const updateInfo = snapshot.val();
         const currentDeviceId = localStorage.getItem('deviceId');
         
+        // Skip jika update dari device sendiri
         if (updateInfo.deviceId === currentDeviceId) {
           return;
         }
         
         const lastLoadTime = parseInt(localStorage.getItem('lastLoadTime') || '0');
-        if (updateInfo.timestamp > lastLoadTime) {
-          console.log('🔄 Realtime update detected - loading new data...');
-          localStorage.setItem('lastLoadTime', updateInfo.timestamp);
+        const currentTime = Date.now();
+        
+        console.log('📡 Realtime update detected from device:', updateInfo.deviceId);
+        
+        // Load data baru
+        console.log('🔄 Loading new data...');
+        localStorage.setItem('lastLoadTime', currentTime);
+        
+        // Tunggu sebentar sebelum load
+        setTimeout(async () => {
           await loadFromFirebase(true);
-        }
+        }, 500);
       }
     });
   }
   
-  // ==================== OVERRIDE SAVEALL ====================
+  // Override saveAll
   if (window.saveAll) {
     const originalSaveAll = window.saveAll;
     window.saveAll = function() {
@@ -2971,42 +3048,61 @@ function salinSenaraiPelajar() {
       if (window._syncTimeout) clearTimeout(window._syncTimeout);
       window._syncTimeout = setTimeout(() => {
         syncToFirebase();
-      }, 1000);
+      }, 500);
     };
   }
   
-  // ==================== FUNGSI MANUAL UNTUK TESTING ====================
+  // Override functions yang mengubah data
+  const functionsToTrack = ['tambahPelajar', 'deletePelajar', 'simpanMarkahBM', 'simpanAnalisisItem', 'tambahToken', 'updateTP', 'setPBD', 'tambahPBDStudent'];
+  
+  functionsToTrack.forEach(funcName => {
+    if (window[funcName]) {
+      const originalFunc = window[funcName];
+      window[funcName] = function() {
+        const result = originalFunc.apply(this, arguments);
+        setTimeout(() => syncToFirebase(), 300);
+        return result;
+      };
+    }
+  });
+  
+  // Manual functions untuk testing
   window.forceSync = async () => {
-    console.log('Manual force sync...');
-    await syncToFirebase();
+    await syncToFirebase(true);
     alert('✅ Sync manual selesai');
   };
   
   window.forceLoad = async () => {
-    console.log('Manual force load...');
     await loadFromFirebase(true);
     alert('✅ Load manual selesai');
   };
   
   window.showSyncStatus = () => {
-    console.log('Sync Status:', {
-      isSyncing,
-      deviceId: localStorage.getItem('deviceId')
-    });
+    console.log('=== SYNC STATUS ===');
+    console.log('Device ID:', localStorage.getItem('deviceId'));
+    console.log('Data Hash:', getDataHash());
+    console.log('Is Syncing:', isSyncing);
   };
   
-  // ==================== INISIALISASI ====================
+  // Auto sync setiap 10 saat (backup)
+  setInterval(() => {
+    syncToFirebase();
+  }, 10000);
+  
+  // Init Firebase
   async function initFirebase() {
     console.log('🔥 Memulakan Firebase Realtime...');
+    console.log('📱 Device ID:', localStorage.getItem('deviceId') || 'new device');
+    
     await loadFromFirebase(true);
     listenRealtime();
     
     setTimeout(() => {
       syncToFirebase();
-    }, 2000);
+    }, 3000);
     
     console.log('✅ Firebase Realtime sedia!');
-    console.log('📱 Device ID:', localStorage.getItem('deviceId'));
+    showNotification('🔥 Sync Cloud aktif');
   }
   
   if (document.readyState === 'loading') {
